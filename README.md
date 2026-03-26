@@ -70,7 +70,7 @@ ISRC (International Standard Recording Code) is a unique identifier embedded in 
 ### 1. Clone & install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/playlist-porter.git
+git clone https://github.com/nikhil-thomas-a/playlist-porter.git
 cd playlist-porter
 npm install
 ```
@@ -172,7 +172,7 @@ src/
 
 ## ⚡ Deploy to Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/playlist-porter)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/nikhil-thomas-a/playlist-porter)
 
 1. Click the button above
 2. Add all environment variables from `.env.example`
