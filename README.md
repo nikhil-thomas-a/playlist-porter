@@ -213,3 +213,6 @@ src/
 ## 📄 License
 
 MIT — free to use, modify, and distribute.
+
+Youtube Music allows you to transfer all playlists. You can check this Website below. 
+https://support.google.com/youtubemusic/answer/14729358?hl=en
