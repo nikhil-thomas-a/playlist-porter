@@ -175,6 +175,32 @@ src/
 
 ---
 
+<<<<<<< HEAD
+=======
+## ⚡ Deploy to Vercel
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/nikhil-thomas-a/playlist-porter)
+
+1. Click the button above
+2. Add all environment variables from `.env.example`
+3. Update redirect URIs in Spotify/Google dashboards to your Vercel URL
+4. Set `NEXTAUTH_URL` to your Vercel deployment URL
+
+---
+
+## ⚠️ Known Limitations
+
+| Limitation | Reason |
+|---|---|
+| YouTube Music "Liked Songs" cannot be read | No official YouTube Music API; liked songs are private |
+| YouTube transfers are slower | YouTube Data API requires adding tracks one-by-one; Spotify/Apple support batch writes |
+| Apple Music requires paid dev account | MusicKit key generation requires Apple Developer Program ($99/yr) |
+| YouTube quota limits | 10,000 units/day free tier; each track search = 100 units |
+| Podcast/episode tracks are skipped | Cross-platform podcast support is out of scope |
+
+---
+
+>>>>>>> 6ffa8b4c925264130d5777023fe04e8c1cb3aae7
 ## 🗺 Roadmap
 
 - [ ] Manual search fallback for unmatched tracks
