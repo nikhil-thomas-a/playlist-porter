@@ -175,7 +175,7 @@ src/
 
 ---
 
-<<<<<<< HEAD
+
 =======
 ## ⚡ Deploy to Vercel
 
