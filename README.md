@@ -1,142 +1,154 @@
 # 🎵 Playlist Porter
 
-> Transfer playlists between Spotify, YouTube Music, and Apple Music — instantly, privately, and for free.
+> Transfer playlists between Spotify and YouTube Music — instantly, privately, and for free.
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![Deploy on Vercel](https://img.shields.io/badge/Deploy-Vercel-black?style=flat-square&logo=vercel)
 
 ---
 
 ## ✨ Features
 
-- **3 platforms supported** — Spotify, YouTube Music, Apple Music
-- **Smart track matching** — ISRC codes (where available) for exact matching, with fuzzy title/artist fallback
-- **Live progress streaming** — Server-Sent Events give you real-time match counts as the transfer runs
-- **Privacy-first** — OAuth tokens are never persisted on the server; your credentials stay with you
-- **One-click Vercel deploy** — No infrastructure required
+- **Spotify ↔ YouTube Music** — transfer in either direction
+- **Smart track matching** — uses ISRC codes for exact matching, falls back to title + artist search
+- **Live progress** — real-time match count as the transfer runs (Server-Sent Events)
+- **Privacy-first** — tokens are never stored on the server; everything stays in your browser session
+- **One-click Vercel deploy**
 
 ---
 
-## 🧠 How It Works
+## 📸 How It Works
 
 ```
-User connects Source ──► Playlist Porter fetches tracks
-                                   │
-                                   ▼
-              For each track: search by ISRC → title/artist fallback
-                                   │
-                                   ▼
-              Create new playlist on Target platform
-                                   │
-                                   ▼
-              Bulk-add matched tracks (Spotify/Apple) or one-by-one (YouTube)
+Connect Spotify → Connect YouTube Music → Pick a playlist → Hit Transfer
+
+For each track:
+  1. Search by ISRC (exact match, ~99% accuracy)
+  2. Fall back to "track + artist" search (~85%)
+  3. Fall back to loose search (~70%)
+
+Create new playlist on target → Add all matched tracks
 ```
 
-### Track Matching Strategy
-
-| Priority | Method | Accuracy |
-|---|---|---|
-| 1st | ISRC lookup (exact) | ~99% |
-| 2nd | `track:"X" artist:"Y"` quoted search | ~85% |
-| 3rd | Loose `title artist` search | ~70% |
-
-ISRC (International Standard Recording Code) is a unique identifier embedded in most streaming track metadata. When it's available, it's used first — this gives near-perfect matching across platforms. If unavailable (e.g. YouTube Music tracks), the app falls back to structured and then loose text search.
-
 ---
 
-## 🏗 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | [Next.js 14](https://nextjs.org) (App Router) |
-| Language | TypeScript |
-| Auth | [NextAuth.js](https://next-auth.js.org) (Spotify + Google OAuth) |
-| Apple Music | [MusicKit JS](https://developer.apple.com/documentation/musickitjs) (client-side) + Apple Music API (server-side) |
-| Styling | CSS Variables + custom design system (no Tailwind) |
-| Progress streaming | [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) via Next.js Route Handlers |
-| Deployment | [Vercel](https://vercel.com) |
-
----
-
-## 🚀 Getting Started
+## 🚀 Running Locally (Step by Step)
 
 ### Prerequisites
 
-- Node.js 18+
-- Accounts and API credentials for the platforms you want to use (see below)
+- [Node.js 18+](https://nodejs.org) installed on your machine
+- A free Spotify account
+- A Google account (for YouTube Music)
 
-### 1. Clone & install
+---
+
+### Step 1 — Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/playlist-porter.git
+git clone https://github.com/nikhil-thomas-a/playlist-porter.git
 cd playlist-porter
+```
+
+---
+
+### Step 2 — Install dependencies
+
+```bash
 npm install
 ```
 
-### 2. Set up environment variables
+---
 
-```bash
-cp .env.example .env.local
+### Step 3 — Set up Spotify API credentials
+
+1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
+2. Log in and click **"Create app"**
+3. Fill in:
+   - **App name:** Playlist Porter (or anything you like)
+   - **App description:** Playlist transfer tool
+   - **Redirect URI:** `http://localhost:3000/api/auth/callback/spotify`
+   - **Which API/SDKs:** check **Web API**
+4. Click **Save**
+5. On your app page, click **Settings** — you'll see your **Client ID** and **Client Secret**
+
+---
+
+### Step 4 — Set up Google / YouTube Music API credentials
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Click the project dropdown at the top → **New Project** → give it a name → **Create**
+3. In the sidebar go to **APIs & Services → Library**
+4. Search for **YouTube Data API v3** → click it → click **Enable**
+5. In the sidebar go to **APIs & Services → OAuth consent screen**
+   - Choose **External** → **Create**
+   - Fill in **App name** (e.g. "Playlist Porter") and your email → **Save and Continue** through all steps
+   - On the **Test users** step, add your own Google email → **Save and Continue**
+6. In the sidebar go to **APIs & Services → Credentials**
+   - Click **+ Create Credentials → OAuth client ID**
+   - Application type: **Web application**
+   - Under **Authorised redirect URIs** click **Add URI** and enter: `http://localhost:3000/api/auth/callback/google`
+   - Click **Create**
+7. A popup shows your **Client ID** and **Client Secret** — copy both
+
+---
+
+### Step 5 — Create your environment file
+
+In the project root, create a file called `.env.local` and paste in:
+
+```env
+SPOTIFY_CLIENT_ID=paste_your_spotify_client_id_here
+SPOTIFY_CLIENT_SECRET=paste_your_spotify_client_secret_here
+
+GOOGLE_CLIENT_ID=paste_your_google_client_id_here
+GOOGLE_CLIENT_SECRET=paste_your_google_client_secret_here
+
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=any_long_random_string_here
 ```
 
-Fill in the values (see **API Setup** section below).
+> **NEXTAUTH_SECRET** can be anything — just make it long and random. For example: `my-super-secret-playlist-porter-key-2024`
 
-### 3. Run locally
+---
+
+### Step 6 — Run the app
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) in your browser. Done!
 
 ---
 
-## 🔑 API Setup
+## ☁️ Deploying to Vercel (Free Hosting)
 
-### Spotify
+1. Push this repo to your GitHub (you've already done this)
+2. Go to [vercel.com](https://vercel.com) → **Add New → Project**
+3. Import your `playlist-porter` repo
+4. Before clicking Deploy, open **Environment Variables** and add all 6 variables from your `.env.local`
+5. Set `NEXTAUTH_URL` to your Vercel URL (e.g. `https://playlist-porter-xyz.vercel.app`) — you can update this after first deploy
+6. Click **Deploy**
 
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create an app
-3. Add `http://localhost:3000/api/auth/callback/spotify` to Redirect URIs
-4. Copy **Client ID** and **Client Secret** → `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`
+**After deploying**, update your OAuth redirect URIs:
 
-### YouTube Music (via Google OAuth)
+- **Spotify** → Developer Dashboard → your app → Edit Settings → add `https://YOUR-VERCEL-URL/api/auth/callback/spotify`
+- **Google** → Cloud Console → Credentials → your OAuth client → add `https://YOUR-VERCEL-URL/api/auth/callback/google`
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com)
-2. Create a project → Enable **YouTube Data API v3**
-3. Create OAuth 2.0 credentials (Web application)
-4. Add `http://localhost:3000/api/auth/callback/google` to Authorised redirect URIs
-5. Copy **Client ID** and **Client Secret** → `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+Then go back to Vercel → your project → **Settings → Environment Variables** → update `NEXTAUTH_URL` to your real Vercel URL → **Redeploy**.
 
-> **Note:** YouTube Data API v3 has a quota of 10,000 units/day on the free tier. Each search costs 100 units, so large playlists may exhaust the daily quota. Request a quota increase from Google Cloud Console if needed.
+---
 
-### Apple Music
+## ⚠️ Known Limitations
 
-Apple Music requires an [Apple Developer Program](https://developer.apple.com/programs/) membership ($99/year).
-
-1. In your Apple Developer account, go to **Certificates, Identifiers & Profiles**
-2. Create a **MusicKit** key under **Keys**
-3. Download the `.p8` private key file (you can only download it once)
-4. Note your **Key ID** and **Team ID**
-5. Add to `.env.local`:
-
-```env
-APPLE_MUSIC_KEY_ID=YOUR_KEY_ID
-APPLE_MUSIC_TEAM_ID=YOUR_TEAM_ID
-APPLE_MUSIC_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_KEY_CONTENTS_HERE\n-----END PRIVATE KEY-----"
-```
-
-Replace actual newlines in the key with `\n` when pasting into the env file.
-
-### NextAuth Secret
-
-```bash
-openssl rand -base64 32
-```
-
-Paste the output as `NEXTAUTH_SECRET`.
+| Limitation | Reason |
+|---|---|
+| Only one platform connected at a time per sign-in | NextAuth uses a single session; connect one, then switch accounts to connect the other |
+| YouTube transfers are slower | YouTube API requires adding tracks one by one; Spotify supports batch writes of 100 |
+| YouTube quota: 10,000 units/day | Each track search costs 100 units on the free tier — large playlists may hit the daily limit |
+| YouTube "Liked Songs" not readable | YouTube Music's liked songs are private and not exposed via the Data API |
+| Podcasts and episodes are skipped | Cross-platform podcast support is out of scope |
 
 ---
 
@@ -146,74 +158,32 @@ Paste the output as `NEXTAUTH_SECRET`.
 src/
 ├── app/
 │   ├── api/
-│   │   ├── auth/[...nextauth]/   # OAuth handlers (Spotify, Google)
-│   │   ├── apple/developer-token/ # Apple Music JWT generation
-│   │   ├── playlists/            # Fetch playlists from any platform
+│   │   ├── auth/[...nextauth]/   # OAuth for Spotify + Google
+│   │   ├── playlists/            # Fetch playlists from either platform
 │   │   └── transfer/             # Core transfer engine (SSE streaming)
-│   ├── globals.css               # Design system & CSS variables
+│   ├── globals.css               # Design system
 │   ├── layout.tsx
-│   ├── page.tsx                  # Main UI
+│   ├── page.tsx                  # All UI in one file
 │   └── providers.tsx
-├── components/
-│   ├── PlatformCard.tsx          # Connect/disconnect UI per platform
-│   ├── PlaylistSelector.tsx      # Searchable playlist list
-│   ├── TransferArrow.tsx         # Animated direction indicator
-│   └── TransferProgress.tsx      # Live progress + stats
 ├── lib/
-│   ├── spotify.ts                # Spotify Web API calls
-│   ├── youtube.ts                # YouTube Data API v3 calls
-│   └── apple.ts                  # Apple Music API + JWT signing
+│   ├── spotify.ts                # Spotify Web API
+│   └── youtube.ts                # YouTube Data API v3
 └── types/
-    ├── index.ts                  # Shared types (Track, Playlist, etc.)
-    └── next-auth.d.ts            # Session type augmentation
+    ├── index.ts                  # Shared types
+    └── next-auth.d.ts
 ```
-
----
-
-## ⚡ Deploy to Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/playlist-porter)
-
-1. Click the button above
-2. Add all environment variables from `.env.example`
-3. Update redirect URIs in Spotify/Google dashboards to your Vercel URL
-4. Set `NEXTAUTH_URL` to your Vercel deployment URL
-
----
-
-## ⚠️ Known Limitations
-
-| Limitation | Reason |
-|---|---|
-| YouTube Music "Liked Songs" cannot be read | No official YouTube Music API; liked songs are private |
-| YouTube transfers are slower | YouTube Data API requires adding tracks one-by-one; Spotify/Apple support batch writes |
-| Apple Music requires paid dev account | MusicKit key generation requires Apple Developer Program ($99/yr) |
-| YouTube quota limits | 10,000 units/day free tier; each track search = 100 units |
-| Podcast/episode tracks are skipped | Cross-platform podcast support is out of scope |
 
 ---
 
 ## 🗺 Roadmap
 
-- [ ] Retry logic for unmatched tracks (manual search fallback)
-- [ ] Transfer history / past jobs
-- [ ] JioSaavn support (read-only via unofficial API)
-- [ ] Batch transfer multiple playlists
-- [ ] Dark/light mode toggle
+- [ ] Manual search fallback for unmatched tracks
+- [ ] Transfer history
 - [ ] Export playlist as CSV / JSON
+- [ ] Batch transfer multiple playlists
 
 ---
 
 ## 📄 License
 
-MIT — do whatever you want with it. Attribution appreciated but not required.
-
----
-
-## 🙏 Acknowledgements
-
-- [Spotify Web API](https://developer.spotify.com/documentation/web-api)
-- [YouTube Data API v3](https://developers.google.com/youtube/v3)
-- [Apple Music API](https://developer.apple.com/documentation/applemusicapi)
-- [MusicKit JS](https://developer.apple.com/documentation/musickitjs)
-- [NextAuth.js](https://next-auth.js.org)
+MIT — free to use, modify, and distribute.

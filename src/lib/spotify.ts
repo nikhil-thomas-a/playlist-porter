@@ -1,135 +1,79 @@
 import { Playlist, Track } from '@/types'
 
-const SPOTIFY_API = 'https://api.spotify.com/v1'
+const BASE = 'https://api.spotify.com/v1'
 
-async function spotifyFetch(path: string, token: string, options?: RequestInit) {
-  const res = await fetch(`${SPOTIFY_API}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+async function req(path: string, token: string, opts?: RequestInit) {
+  const url = path.startsWith('http') ? path : `${BASE}${path}`
+  const res = await fetch(url, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...opts?.headers },
   })
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Spotify API error ${res.status}: ${err}`)
-  }
+  if (!res.ok) throw new Error(`Spotify ${res.status}: ${await res.text()}`)
   return res.json()
 }
 
 export async function getSpotifyPlaylists(token: string): Promise<Playlist[]> {
-  const playlists: Playlist[] = []
-  let url: string | null = '/me/playlists?limit=50'
-
+  const results: Playlist[] = []
+  let url: string | null = `${BASE}/me/playlists?limit=50`
   while (url) {
-    // If it's a relative path use spotifyFetch, otherwise full URL
-    const data = url.startsWith('/')
-      ? await spotifyFetch(url, token)
-      : await fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
-
-    playlists.push(
-      ...data.items.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        image: p.images?.[0]?.url,
-        trackCount: p.tracks.total,
-        platform: 'spotify' as const,
-        owner: p.owner?.display_name,
-      }))
-    )
+    const data = await req(url, token)
+    results.push(...data.items.map((p: any) => ({
+      id: p.id, name: p.name, description: p.description,
+      image: p.images?.[0]?.url, trackCount: p.tracks.total,
+      platform: 'spotify' as const, owner: p.owner?.display_name,
+    })))
     url = data.next
-      ? data.next.replace(SPOTIFY_API, '')
-      : null
   }
-
-  return playlists
+  return results
 }
 
-export async function getSpotifyPlaylistTracks(playlistId: string, token: string): Promise<Track[]> {
-  const tracks: Track[] = []
-  let url: string | null = `/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(id,name,artists,album(name,images),duration_ms,external_ids))`
-
+export async function getSpotifyTracks(playlistId: string, token: string): Promise<Track[]> {
+  const results: Track[] = []
+  let url: string | null = `${BASE}/playlists/${playlistId}/tracks?limit=100&fields=next,items(track(id,name,artists,album(name,images),duration_ms,external_ids))`
   while (url) {
-    const data = url.startsWith('/')
-      ? await spotifyFetch(url, token)
-      : await fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
-
-    for (const item of data.items) {
-      if (!item.track || item.track.type === 'episode') continue
-      tracks.push({
-        id: item.track.id,
-        title: item.track.name,
-        artist: item.track.artists.map((a: any) => a.name).join(', '),
-        album: item.track.album?.name ?? '',
-        duration_ms: item.track.duration_ms,
-        image: item.track.album?.images?.[0]?.url,
-        isrc: item.track.external_ids?.isrc,
+    const data = await req(url, token)
+    for (const { track: t } of data.items) {
+      if (!t || t.type === 'episode') continue
+      results.push({
+        id: t.id, title: t.name,
+        artist: t.artists.map((a: any) => a.name).join(', '),
+        album: t.album?.name ?? '', duration_ms: t.duration_ms,
+        image: t.album?.images?.[0]?.url, isrc: t.external_ids?.isrc,
       })
     }
-    url = data.next ? data.next.replace(SPOTIFY_API, '') : null
+    url = data.next
   }
-
-  return tracks
+  return results
 }
 
-export async function createSpotifyPlaylist(
-  name: string,
-  description: string,
-  token: string
-): Promise<string> {
-  const profile = await spotifyFetch('/me', token)
-  const playlist = await spotifyFetch(`/users/${profile.id}/playlists`, token, {
+export async function createSpotifyPlaylist(name: string, description: string, token: string): Promise<string> {
+  const me = await req('/me', token)
+  const pl = await req(`/users/${me.id}/playlists`, token, {
     method: 'POST',
     body: JSON.stringify({ name, description, public: false }),
   })
-  return playlist.id
+  return pl.id
 }
 
-export async function addTracksToSpotifyPlaylist(
-  playlistId: string,
-  trackUris: string[],
-  token: string
-): Promise<void> {
-  // Spotify allows max 100 tracks per request
-  for (let i = 0; i < trackUris.length; i += 100) {
-    const chunk = trackUris.slice(i, i + 100)
-    await spotifyFetch(`/playlists/${playlistId}/tracks`, token, {
+export async function addToSpotifyPlaylist(playlistId: string, uris: string[], token: string) {
+  for (let i = 0; i < uris.length; i += 100) {
+    await req(`/playlists/${playlistId}/tracks`, token, {
       method: 'POST',
-      body: JSON.stringify({ uris: chunk }),
+      body: JSON.stringify({ uris: uris.slice(i, i + 100) }),
     })
   }
 }
 
-export async function searchSpotifyTrack(
-  track: Track,
-  token: string
-): Promise<string | null> {
-  // First try ISRC match (most accurate)
+export async function searchSpotify(track: Track, token: string): Promise<string | null> {
   if (track.isrc) {
     try {
-      const data = await spotifyFetch(
-        `/search?type=track&q=isrc:${track.isrc}&limit=1`,
-        token
-      )
-      if (data.tracks.items.length > 0) {
-        return `spotify:track:${data.tracks.items[0].id}`
-      }
+      const d = await req(`/search?type=track&q=isrc:${track.isrc}&limit=1`, token)
+      if (d.tracks.items.length > 0) return `spotify:track:${d.tracks.items[0].id}`
     } catch {}
   }
-
-  // Fallback: title + artist search
-  const query = encodeURIComponent(`track:"${track.title}" artist:"${track.artist}"`)
-  const data = await spotifyFetch(`/search?type=track&q=${query}&limit=1`, token)
-  if (data.tracks.items.length > 0) {
-    return `spotify:track:${data.tracks.items[0].id}`
-  }
-
-  // Last resort: loose search
-  const looseQuery = encodeURIComponent(`${track.title} ${track.artist}`)
-  const looseData = await spotifyFetch(`/search?type=track&q=${looseQuery}&limit=1`, token)
-  return looseData.tracks.items.length > 0
-    ? `spotify:track:${looseData.tracks.items[0].id}`
-    : null
+  const q = encodeURIComponent(`track:"${track.title}" artist:"${track.artist}"`)
+  const d = await req(`/search?type=track&q=${q}&limit=1`, token)
+  if (d.tracks.items.length > 0) return `spotify:track:${d.tracks.items[0].id}`
+  const d2 = await req(`/search?type=track&q=${encodeURIComponent(`${track.title} ${track.artist}`)}&limit=1`, token)
+  return d2.tracks.items.length > 0 ? `spotify:track:${d2.tracks.items[0].id}` : null
 }

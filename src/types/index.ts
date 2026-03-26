@@ -1,4 +1,4 @@
-export type Platform = 'spotify' | 'youtube' | 'apple'
+export type Platform = 'spotify' | 'youtube'
 
 export interface Track {
   id: string
@@ -7,7 +7,7 @@ export interface Track {
   album: string
   duration_ms?: number
   image?: string
-  isrc?: string // International Standard Recording Code — used for cross-platform matching
+  isrc?: string // Used for accurate cross-platform matching on Spotify
 }
 
 export interface Playlist {
@@ -34,12 +34,4 @@ export interface TransferJob {
   targetPlaylistId?: string
   error?: string
   createdAt: string
-}
-
-export interface PlatformConnection {
-  platform: Platform
-  connected: boolean
-  displayName?: string
-  avatar?: string
-  accessToken?: string
 }

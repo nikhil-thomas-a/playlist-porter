@@ -1,177 +1,71 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '../auth/[...nextauth]/route'
 import { Platform, Track } from '@/types'
-
-// Spotify
-import {
-  getSpotifyPlaylistTracks,
-  createSpotifyPlaylist,
-  addTracksToSpotifyPlaylist,
-  searchSpotifyTrack,
-} from '@/lib/spotify'
-
-// YouTube
-import {
-  getYouTubePlaylistTracks,
-  createYouTubePlaylist,
-  addVideoToYouTubePlaylist,
-  searchYouTubeTrack,
-} from '@/lib/youtube'
-
-// Apple
-import {
-  getApplePlaylistTracks,
-  createApplePlaylist,
-  addTracksToApplePlaylist,
-  searchAppleTrack,
-  generateAppleDeveloperToken,
-} from '@/lib/apple'
-
-export interface TransferRequest {
-  sourcePlatform: Platform
-  targetPlatform: Platform
-  playlistId: string
-  playlistName: string
-  sourceAccessToken?: string   // override; otherwise uses session
-  targetAccessToken?: string   // for cross-session transfers
-  appleUserToken?: string      // required if source or target is apple
-}
+import { getSpotifyTracks, createSpotifyPlaylist, addToSpotifyPlaylist, searchSpotify } from '@/lib/spotify'
+import { getYouTubeTracks, createYouTubePlaylist, addToYouTubePlaylist, searchYouTube } from '@/lib/youtube'
 
 export async function POST(req: NextRequest) {
-  const body: TransferRequest = await req.json()
-  const {
-    sourcePlatform,
-    targetPlatform,
-    playlistId,
-    playlistName,
-    appleUserToken,
-  } = body
+  const { sourcePlatform, targetPlatform, playlistId, playlistName }
+    : { sourcePlatform: Platform; targetPlatform: Platform; playlistId: string; playlistName: string }
+    = await req.json()
 
   const session = await getServerSession(authOptions)
-  const sessionToken = session?.accessToken ?? ''
+  const token = session?.accessToken ?? ''
 
-  // We stream progress using Server-Sent Events via ReadableStream
   const stream = new ReadableStream({
     async start(controller) {
-      function send(event: string, data: object) {
-        controller.enqueue(
-          new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        )
-      }
+      const send = (event: string, data: object) =>
+        controller.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
 
       try {
-        const appleDevToken = (sourcePlatform === 'apple' || targetPlatform === 'apple')
-          ? await generateAppleDeveloperToken()
-          : ''
+        // 1. Fetch source tracks
+        send('progress', { stage: 'fetching', message: 'Fetching source playlist…', percent: 5 })
+        const tracks: Track[] = sourcePlatform === 'spotify'
+          ? await getSpotifyTracks(playlistId, token)
+          : await getYouTubeTracks(playlistId, token)
 
-        // ── STEP 1: Fetch source tracks ──────────────────────────────────────
-        send('progress', { stage: 'fetching', message: 'Fetching source playlist tracks…', percent: 5 })
+        send('progress', { stage: 'fetching', message: `Found ${tracks.length} tracks. Creating playlist…`, percent: 20, total: tracks.length })
 
-        let sourceTracks: Track[] = []
-        if (sourcePlatform === 'spotify') {
-          sourceTracks = await getSpotifyPlaylistTracks(playlistId, sessionToken)
-        } else if (sourcePlatform === 'youtube') {
-          sourceTracks = await getYouTubePlaylistTracks(playlistId, sessionToken)
-        } else if (sourcePlatform === 'apple') {
-          if (!appleUserToken) throw new Error('Apple Music user token required')
-          sourceTracks = await getApplePlaylistTracks(playlistId, appleDevToken, appleUserToken)
-        }
+        // 2. Create target playlist
+        const newName = `${playlistName} (via Playlist Porter)`
+        const newDesc = `Transferred from ${sourcePlatform === 'spotify' ? 'Spotify' : 'YouTube Music'} by Playlist Porter`
+        const targetId = targetPlatform === 'spotify'
+          ? await createSpotifyPlaylist(newName, newDesc, token)
+          : await createYouTubePlaylist(newName, newDesc, token)
 
-        send('progress', {
-          stage: 'fetching',
-          message: `Found ${sourceTracks.length} tracks. Creating destination playlist…`,
-          percent: 20,
-          total: sourceTracks.length,
-        })
+        send('progress', { stage: 'matching', message: 'Matching tracks…', percent: 25, total: tracks.length })
 
-        // ── STEP 2: Create target playlist ───────────────────────────────────
-        const newPlaylistName = `${playlistName} (via Playlist Porter)`
-        const newPlaylistDescription = `Transferred from ${sourcePlatform} by Playlist Porter`
-
-        let targetPlaylistId = ''
-        if (targetPlatform === 'spotify') {
-          targetPlaylistId = await createSpotifyPlaylist(newPlaylistName, newPlaylistDescription, sessionToken)
-        } else if (targetPlatform === 'youtube') {
-          targetPlaylistId = await createYouTubePlaylist(newPlaylistName, newPlaylistDescription, sessionToken)
-        } else if (targetPlatform === 'apple') {
-          if (!appleUserToken) throw new Error('Apple Music user token required')
-          targetPlaylistId = await createApplePlaylist(newPlaylistName, newPlaylistDescription, appleDevToken, appleUserToken)
-        }
-
-        send('progress', { stage: 'matching', message: 'Matching tracks…', percent: 25, total: sourceTracks.length })
-
-        // ── STEP 3: Match & add tracks ───────────────────────────────────────
+        // 3. Match each track
         const spotifyUris: string[] = []
-        const appleIds: string[] = []
-        let matched = 0
-        let unmatched = 0
+        let matched = 0, unmatched = 0
 
-        for (let i = 0; i < sourceTracks.length; i++) {
-          const track = sourceTracks[i]
-          const percent = 25 + Math.round(((i + 1) / sourceTracks.length) * 65)
+        for (let i = 0; i < tracks.length; i++) {
+          const track = tracks[i]
+          const percent = 25 + Math.round(((i + 1) / tracks.length) * 65)
 
           if (targetPlatform === 'spotify') {
-            const uri = await searchSpotifyTrack(track, sessionToken)
-            if (uri) {
-              spotifyUris.push(uri)
-              matched++
-            } else {
-              unmatched++
-            }
-          } else if (targetPlatform === 'youtube') {
-            const videoId = await searchYouTubeTrack(track, sessionToken)
+            const uri = await searchSpotify(track, token)
+            if (uri) { spotifyUris.push(uri); matched++ } else { unmatched++ }
+          } else {
+            const videoId = await searchYouTube(track, token)
             if (videoId) {
-              // Add one at a time for YouTube to avoid rate limits
-              await addVideoToYouTubePlaylist(targetPlaylistId, videoId, sessionToken)
+              await addToYouTubePlaylist(targetId, videoId, token)
               matched++
-            } else {
-              unmatched++
-            }
-          } else if (targetPlatform === 'apple') {
-            if (!appleUserToken) throw new Error('Apple Music user token required')
-            const id = await searchAppleTrack(track, appleDevToken, appleUserToken)
-            if (id) {
-              appleIds.push(id)
-              matched++
-            } else {
-              unmatched++
-            }
+            } else { unmatched++ }
           }
 
-          send('progress', {
-            stage: 'matching',
-            message: `Matched ${matched} / ${i + 1} tracks…`,
-            percent,
-            matched,
-            unmatched,
-            total: sourceTracks.length,
-            current: track.title,
-          })
+          send('progress', { stage: 'matching', percent, matched, unmatched, total: tracks.length, current: track.title })
         }
 
-        // ── STEP 4: Bulk-write for Spotify and Apple ─────────────────────────
+        // 4. Bulk-write for Spotify
         if (targetPlatform === 'spotify' && spotifyUris.length > 0) {
-          send('progress', { stage: 'writing', message: 'Adding tracks to Spotify playlist…', percent: 92 })
-          await addTracksToSpotifyPlaylist(targetPlaylistId, spotifyUris, sessionToken)
+          send('progress', { stage: 'writing', message: 'Writing to Spotify…', percent: 92 })
+          await addToSpotifyPlaylist(targetId, spotifyUris, token)
         }
 
-        if (targetPlatform === 'apple' && appleIds.length > 0) {
-          send('progress', { stage: 'writing', message: 'Adding tracks to Apple Music playlist…', percent: 92 })
-          if (!appleUserToken) throw new Error('Apple Music user token required')
-          await addTracksToApplePlaylist(targetPlaylistId, appleIds, appleDevToken, appleUserToken)
-        }
-
-        // ── DONE ─────────────────────────────────────────────────────────────
-        send('done', {
-          matched,
-          unmatched,
-          total: sourceTracks.length,
-          targetPlaylistId,
-          percent: 100,
-        })
+        send('done', { matched, unmatched, total: tracks.length, targetPlaylistId: targetId, percent: 100 })
       } catch (err: any) {
-        console.error('[transfer]', err)
         send('error', { message: err.message })
       } finally {
         controller.close()
@@ -180,10 +74,6 @@ export async function POST(req: NextRequest) {
   })
 
   return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
   })
 }
